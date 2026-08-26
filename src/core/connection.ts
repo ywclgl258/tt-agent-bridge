@@ -4,7 +4,7 @@ import {
   PROTOCOL_VERSION,
   type EventMsg,
   type ExtToServer,
-  type HelloMsg,
+  type ExtensionHelloMsg,
   type ServerToExt,
 } from './protocol';
 import type { Dispatcher } from './dispatcher';
@@ -19,7 +19,7 @@ export type ConnState =
 export interface BridgeConnectionOpts {
   getPort: () => number;
   getToken: () => string;
-  buildHello: () => Omit<HelloMsg, 'type' | 'token' | 'protocolVersion'>;
+  buildHello: () => Omit<ExtensionHelloMsg, 'type' | 'token' | 'protocolVersion' | 'role'>;
   dispatcher: Dispatcher;
   onStateChange: (state: ConnState, detail?: string) => void;
   onLog: (line: string) => void;
@@ -102,10 +102,11 @@ export class BridgeConnection {
 
     ws.onopen = () => {
       if (gen !== this.generation) return;
-      const hello: HelloMsg = {
+      const hello: ExtensionHelloMsg = {
         type: 'hello',
         token,
         protocolVersion: PROTOCOL_VERSION,
+        role: 'extension',
         ...this.opts.buildHello(),
       };
       ws.send(JSON.stringify(hello));
@@ -129,7 +130,10 @@ export class BridgeConnection {
       if (ev.code === 4001) {
         this.opts.onStateChange('auth-failed', 'token rejected by bridge');
         this.opts.onLog('auth failed: token rejected (check token in settings)');
-        // 鉴权失败不重试轰炸，等用户改设置后 restart
+        // 保留慢速重试（30s 起步）：bridge 可能换了 token 重启，
+        // 用户修好设置或 bridge 恢复后应能自愈，而不是永久躺平
+        this.backoffMs = Math.max(this.backoffMs, 30_000);
+        this.scheduleRetry('auth');
         return;
       }
       this.scheduleRetry();
@@ -146,6 +150,11 @@ export class BridgeConnection {
       this.rawSend({ type: 'pong', t: msg.t });
       return;
     }
+    if (msg.type === 'welcome') {
+      // bridge 接受了 hello：正式置为 connected（点亮徽章、重置退避）
+      this.noteAuthenticated();
+      return;
+    }
     if (msg.type !== 'call') return;
 
     const result = await this.opts.dispatcher.handle(msg.tool, msg.args);
@@ -156,9 +165,12 @@ export class BridgeConnection {
     }
   }
 
-  private scheduleRetry(): void {
+  private scheduleRetry(reason?: string): void {
     if (this.stopped || this.retryTimer !== null) return;
-    this.opts.onStateChange('disconnected', `retry in ${Math.round(this.backoffMs / 1000)}s`);
+    this.opts.onStateChange(
+      reason === 'auth' ? 'auth-failed' : 'disconnected',
+      `retry in ${Math.round(this.backoffMs / 1000)}s`,
+    );
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
     this.retryTimer = window.setTimeout(() => {

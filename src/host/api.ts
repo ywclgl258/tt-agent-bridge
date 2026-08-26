@@ -59,11 +59,56 @@ export interface WorldInfoActivationEntry {
   position?: string;
 }
 
+export interface ChatSearchHit {
+  index: number;
+  score: number;
+  snippet: string;
+  role: string;
+  text?: string;
+}
+
+export interface ChatSearchOptions {
+  query: string;
+  limit?: number;
+  role?: string;
+  fromIndex?: number;
+  toIndex?: number;
+}
+
+export interface ChatLocateQuery {
+  role?: string;
+  hasTopLevelKeys?: string[];
+  hasExtraKeys?: string[];
+  scanLimit?: number;
+}
+
+export interface ChatLocateResult {
+  index: number;
+  message: Record<string, unknown>;
+}
+
+export interface ChatWindowInfo {
+  mode: 'windowed' | 'off';
+  chatKind: string;
+  totalCount: number;
+  windowStartIndex: number;
+  windowLength: number;
+}
+
+export interface TauriTavernChatHandle {
+  locate: {
+    findLastMessage: (query?: ChatLocateQuery) => Promise<ChatLocateResult | null>;
+  };
+  searchMessages: (options: ChatSearchOptions) => Promise<ChatSearchHit[]>;
+}
+
 export interface TauriTavernHostApi {
   dev?: {
     frontendLogs?: {
       list: (options?: { limit?: number }) => Promise<FrontendLogEntry[]>;
       subscribe: (handler: (entry: FrontendLogEntry) => void) => Promise<HostUnsubscribe>;
+      getConsoleCaptureEnabled?: () => Promise<boolean>;
+      setConsoleCaptureEnabled?: (enabled: boolean) => Promise<void>;
     };
     backendLogs?: {
       tail: (options?: { limit?: number }) => Promise<BackendLogEntry[]>;
@@ -73,6 +118,9 @@ export interface TauriTavernHostApi {
       index: (options?: { limit?: number }) => Promise<LlmApiLogIndexEntry[]>;
       getPreview: (id: number) => Promise<LlmApiLogPreview>;
       getRaw: (id: number) => Promise<LlmApiLogRaw>;
+      subscribeIndex?: (handler: (entry: LlmApiLogIndexEntry) => void) => Promise<HostUnsubscribe>;
+      getKeep?: () => Promise<number>;
+      setKeep?: (keep: number) => Promise<void>;
     };
   };
   worldInfo?: {
@@ -85,6 +133,8 @@ export interface TauriTavernHostApi {
   chat?: {
     current: {
       ref: () => unknown;
+      handle?: () => Promise<TauriTavernChatHandle>;
+      windowInfo?: () => Promise<ChatWindowInfo>;
     };
   };
 }

@@ -4,3 +4,7 @@ dist/index.js.map
 *.tsbuildinfo
 bridge/.bridge-token
 bridge/node_modules/
+.diag/
+bridge/.diag/
+bridge/bridge.log
+.zcode/

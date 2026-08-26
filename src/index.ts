@@ -12,6 +12,7 @@ import { getStContext, initStLayer, ST_EVENTS, stReady } from './host/st';
 import { EXTENSION_VERSION } from './version';
 import { BridgeConnection, type ConnState } from './core/connection';
 import { Dispatcher } from './core/dispatcher';
+import { EXTENSION_TOOLS } from './core/protocol';
 import { createInspectHandlers } from './core/handlers/inspect';
 import { createOperateHandlers } from './core/handlers/operate';
 import { createDebugHandlers } from './core/handlers/debug';
@@ -36,7 +37,7 @@ function snippet(text: unknown, maxLen = 200): string {
 /** 宿主事件 -> bridge 事件流 */
 function subscribeEvents(
   hostApi: TauriTavernHostApi | null,
-  send: (event: 'message_added' | 'worldinfo_activation' | 'log_error', payload: unknown) => void,
+  send: (event: 'message_added' | 'worldinfo_activation' | 'log_error' | 'llm_request' | 'extension_log', payload: unknown) => void,
 ): void {
   const unsubs: HostUnsubscribe[] = [];
 
@@ -45,7 +46,7 @@ function subscribeEvents(
     if (eventSource) {
       const onMessage = (message: unknown) => {
         const chat = getStContext().chat;
-        const index = Array.isArray(chat) ? chat.length - 1 : null;
+        const localIndex = Array.isArray(chat) ? chat.length - 1 : null;
         const name =
           message && typeof message === 'object' && 'name' in message
             ? String((message as { name?: unknown }).name ?? '')
@@ -54,7 +55,23 @@ function subscribeEvents(
           message && typeof message === 'object' && 'mes' in message
             ? snippet((message as { mes?: unknown }).mes)
             : '';
-        send('message_added', { index, name, snippet: mes });
+        const emit = (index: number | null) =>
+          send('message_added', { index, name, snippet: mes });
+        // 窗口化加载下 chat 只含窗口内容：用宿主 windowInfo 换算绝对楼层
+        const windowInfo = hostApi?.chat?.current?.windowInfo;
+        if (windowInfo) {
+          windowInfo()
+            .then((w) => {
+              if (w && w.mode === 'windowed' && localIndex !== null) {
+                emit(w.windowStartIndex + localIndex);
+              } else {
+                emit(localIndex);
+              }
+            })
+            .catch(() => emit(localIndex));
+        } else {
+          emit(localIndex);
+        }
       };
       eventSource.on(ST_EVENTS.MESSAGE_RECEIVED, onMessage);
       eventSource.on(ST_EVENTS.MESSAGE_SENT, onMessage);
@@ -75,7 +92,32 @@ function subscribeEvents(
   if (hostApi?.dev?.frontendLogs?.subscribe) {
     void hostApi.dev.frontendLogs
       .subscribe((entry) => {
-        if (entry.level === 'error') send('log_error', entry);
+        if (entry.level === 'error') send('log_error', { kind: 'frontend', ...entry });
+      })
+      .then((unsub) => unsubs.push(unsub))
+      .catch(() => undefined);
+  }
+
+  if (hostApi?.dev?.backendLogs?.subscribe) {
+    void hostApi.dev.backendLogs
+      .subscribe((entry) => {
+        if (entry.level === 'ERROR') send('log_error', { kind: 'backend', ...entry });
+      })
+      .then((unsub) => unsubs.push(unsub))
+      .catch(() => undefined);
+  }
+
+  if (hostApi?.dev?.llmApiLogs?.subscribeIndex) {
+    void hostApi.dev.llmApiLogs
+      .subscribeIndex((entry) => {
+        send('llm_request', {
+          id: entry.id,
+          ok: entry.ok,
+          level: entry.level,
+          model: entry.model ?? null,
+          endpoint: entry.endpoint,
+          durationMs: entry.durationMs,
+        });
       })
       .then((unsub) => unsubs.push(unsub))
       .catch(() => undefined);
@@ -102,10 +144,16 @@ async function bootstrap(): Promise<void> {
   // dispatcher：注册全部工具（依赖缺失时调用即报错，而不是整个工具消失）
   const dispatcher = new Dispatcher();
   const inspect = createInspectHandlers({ hostApi, extVersion: EXTENSION_VERSION });
-  const operate = createOperateHandlers();
+  const operate = createOperateHandlers({ hostApi });
   const debug = createDebugHandlers({ hostApi });
-  for (const [name, handler] of Object.entries({ ...inspect, ...operate, ...debug })) {
-    dispatcher.register(name as never, handler as never);
+  const handlerMap = { ...inspect, ...operate, ...debug } as Record<string, unknown>;
+  // 注册完整性：与协议契约比对，缺一个直接在控制台暴露
+  for (const name of EXTENSION_TOOLS) {
+    const handler = handlerMap[name];
+    if (typeof handler !== 'function') {
+      console.error(`[TT Agent Bridge] handler missing for protocol tool: ${name}`);
+    }
+    dispatcher.register(name, handler as never);
   }
 
   // settings + UI
@@ -122,12 +170,16 @@ async function bootstrap(): Promise<void> {
     getToken: () => settings.state.token,
     buildHello: () => ({
       ext: { version: EXTENSION_VERSION },
-      host: { capabilities: dispatcher.registeredTools() },
+      host: { tools: dispatcher.registeredTools() },
     }),
     dispatcher,
     onStateChange: (state: ConnState, detail?: string) => {
       ui.setState(state, detail);
       if (state === 'connected') ui.log('bridge connected');
+      connection?.sendEvent('extension_log', {
+        level: 'info',
+        message: `connection ${state}${detail ? `: ${detail}` : ''}`,
+      });
     },
     onLog: (line) => ui.log(line),
   });

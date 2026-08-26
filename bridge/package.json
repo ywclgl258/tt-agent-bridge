@@ -1,10 +1,11 @@
 {
   "name": "tt-agent-bridge-server",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "daemon": "tsx src/daemon.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

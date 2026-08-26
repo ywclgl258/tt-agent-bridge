@@ -6,7 +6,7 @@
   "js": "dist/index.js",
   "css": "dist/style.css",
   "author": "ywclg",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "homePage": "",
   "auto_update": false,
   "minimum_client_version": "1.16.0",

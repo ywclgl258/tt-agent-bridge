@@ -1,5 +1,6 @@
-// 操作类工具：STScript / 发消息 / 写变量 / 切角色。全部走公开边界。
+// 操作类工具：STScript / 发消息 / 写变量 / 切角色 / 打开世界书条目。全部走公开边界。
 
+import type { TauriTavernHostApi } from '../../host/api';
 import { execSlash, getStContext } from '../../host/st';
 import { argBool, argString, ToolError } from './util';
 
@@ -8,7 +9,11 @@ function escapePipe(text: string): string {
   return text.replace(/\|/g, '\\|');
 }
 
-export function createOperateHandlers() {
+export interface OperateHandlerEnv {
+  hostApi: TauriTavernHostApi | null;
+}
+
+export function createOperateHandlers(env: OperateHandlerEnv) {
   return {
     async tt_exec_stscript(args: Record<string, unknown>): Promise<unknown> {
       const command = argString(args, 'command', { required: true });
@@ -82,6 +87,21 @@ export function createOperateHandlers() {
         );
       }
       return { switched: true };
+    },
+
+    async tt_worldinfo_open(args: Record<string, unknown>): Promise<unknown> {
+      const worldInfo = env.hostApi?.worldInfo;
+      if (!worldInfo?.openEntry) {
+        throw new ToolError('worldInfo.openEntry unavailable on this host');
+      }
+      const world = argString(args, 'world', { required: true });
+      const rawUid = args.uid;
+      let uid: string | number;
+      if (typeof rawUid === 'number') uid = rawUid;
+      else if (typeof rawUid === 'string' && rawUid !== '') uid = rawUid;
+      else throw new ToolError('missing required arg: uid (number or string)');
+      const r = await worldInfo.openEntry({ world, uid });
+      return { opened: r.opened === true, world, uid };
     },
   };
 }

@@ -1,49 +1,53 @@
-function j() {
+function F() {
   return window.__TAURITAVERN__?.api ?? null;
 }
-async function q() {
-  const n = window.__TAURITAVERN__?.ready ?? window.__TAURITAVERN_MAIN_READY__;
-  n && await n;
+async function H() {
+  const o = window.__TAURITAVERN__?.ready ?? window.__TAURITAVERN_MAIN_READY__;
+  o && await o;
 }
-let p = null, L = null;
-function M() {
-  return p !== null;
+function K(o) {
+  const t = ["st-context"];
+  return o.dev?.frontendLogs && t.push("dev.frontendLogs"), o.dev?.backendLogs && t.push("dev.backendLogs"), o.dev?.llmApiLogs && t.push("dev.llmApiLogs"), o.worldInfo && t.push("worldInfo"), o.chat && t.push("chat"), t;
 }
-function h() {
-  if (!p)
+let x = null, C = null;
+function $() {
+  return x !== null;
+}
+function _() {
+  if (!x)
     throw new Error("st-context unavailable: getContext() not resolved");
-  return p();
+  return x();
 }
-async function V() {
-  const n = window;
-  if (typeof n.SillyTavern?.getContext == "function")
-    p = n.SillyTavern.getContext;
+async function P() {
+  const o = window;
+  if (typeof o.SillyTavern?.getContext == "function")
+    x = o.SillyTavern.getContext;
   else
     try {
       const e = await import("/scripts/extensions.js");
-      typeof e.getContext == "function" && (p = e.getContext);
+      typeof e.getContext == "function" && (x = e.getContext);
     } catch {
     }
-  if (p && typeof p().executeSlashCommandsWithOptions != "function")
+  if (x && typeof x().executeSlashCommandsWithOptions != "function")
     try {
-      const o = (await import("/scripts/slash-commands.js")).SlashCommandParser?.commands?.parse;
-      typeof o == "function" && (L = (s) => o(s));
+      const s = (await import("/scripts/slash-commands.js")).SlashCommandParser?.commands?.parse;
+      typeof s == "function" && (C = (r) => s(r));
     } catch {
     }
-  return p !== null;
+  return x !== null;
 }
-async function m(n) {
-  if (L)
-    return L(n);
-  const t = h();
+async function A(o) {
+  if (C)
+    return C(o);
+  const t = _();
   if (typeof t.executeSlashCommandsWithOptions != "function")
     throw new Error("no slash command executor available");
-  return t.executeSlashCommandsWithOptions(n);
+  return t.executeSlashCommandsWithOptions(o);
 }
-const _ = {
+const L = {
   MESSAGE_RECEIVED: "message_received",
   MESSAGE_SENT: "message_sent"
-}, T = "0.2.0", B = 1, P = [
+}, M = "0.3.0", W = 2, q = [
   "tt_status",
   "tt_read_messages",
   "tt_get_variables",
@@ -51,13 +55,20 @@ const _ = {
   "tt_worldinfo_last",
   "tt_llm_logs",
   "tt_logs",
+  "tt_iframes",
+  "tt_mvu_stat",
+  "tt_search_chat",
+  "tt_find_message",
   "tt_exec_stscript",
   "tt_send_message",
   "tt_set_variables",
   "tt_switch_character",
+  "tt_worldinfo_open",
+  "tt_llm_keep",
+  "tt_console_capture",
   "tt_eval"
-], D = 15e3;
-class F {
+], B = 15e3;
+class D {
   constructor(t) {
     this.opts = t;
   }
@@ -88,43 +99,44 @@ class F {
   open() {
     if (this.stopped) return;
     this.clearRetry(), this.generation++;
-    const t = this.generation, e = this.opts.getPort(), r = this.opts.getToken(), o = `ws://127.0.0.1:${e}/bridge`;
-    this.opts.onStateChange("connecting", o);
-    let s;
+    const t = this.generation, e = this.opts.getPort(), n = this.opts.getToken(), s = `ws://127.0.0.1:${e}/bridge`;
+    this.opts.onStateChange("connecting", s);
+    let r;
     try {
-      s = new WebSocket(o);
-    } catch (a) {
-      this.opts.onLog(`connect failed: ${String(a)}`), this.scheduleRetry();
+      r = new WebSocket(s);
+    } catch (i) {
+      this.opts.onLog(`connect failed: ${String(i)}`), this.scheduleRetry();
       return;
     }
-    this.ws = s, s.onopen = () => {
+    this.ws = r, r.onopen = () => {
       if (t !== this.generation) return;
-      const a = {
+      const i = {
         type: "hello",
-        token: r,
-        protocolVersion: B,
+        token: n,
+        protocolVersion: W,
+        role: "extension",
         ...this.opts.buildHello()
       };
-      s.send(JSON.stringify(a));
-    }, s.onmessage = (a) => {
+      r.send(JSON.stringify(i));
+    }, r.onmessage = (i) => {
       if (t !== this.generation) return;
-      let i;
+      let a;
       try {
-        i = JSON.parse(String(a.data));
+        a = JSON.parse(String(i.data));
       } catch {
-        this.opts.onLog(`bad message from bridge: ${String(a.data).slice(0, 120)}`);
+        this.opts.onLog(`bad message from bridge: ${String(i.data).slice(0, 120)}`);
         return;
       }
-      this.handleMessage(i);
-    }, s.onclose = (a) => {
+      this.handleMessage(a);
+    }, r.onclose = (i) => {
       if (t === this.generation) {
-        if (this.ws = null, a.code === 4001) {
-          this.opts.onStateChange("auth-failed", "token rejected by bridge"), this.opts.onLog("auth failed: token rejected (check token in settings)");
+        if (this.ws = null, i.code === 4001) {
+          this.opts.onStateChange("auth-failed", "token rejected by bridge"), this.opts.onLog("auth failed: token rejected (check token in settings)"), this.backoffMs = Math.max(this.backoffMs, 3e4), this.scheduleRetry("auth");
           return;
         }
         this.scheduleRetry();
       }
-    }, s.onerror = () => {
+    }, r.onerror = () => {
       t === this.generation && this.opts.onLog("websocket error");
     };
   }
@@ -133,17 +145,24 @@ class F {
       this.rawSend({ type: "pong", t: t.t });
       return;
     }
+    if (t.type === "welcome") {
+      this.noteAuthenticated();
+      return;
+    }
     if (t.type !== "call") return;
     const e = await this.opts.dispatcher.handle(t.tool, t.args);
     e.ok ? this.rawSend({ type: "result", id: t.id, ok: !0, data: e.data }) : this.rawSend({ type: "result", id: t.id, ok: !1, error: e.error });
   }
-  scheduleRetry() {
+  scheduleRetry(t) {
     if (this.stopped || this.retryTimer !== null) return;
-    this.opts.onStateChange("disconnected", `retry in ${Math.round(this.backoffMs / 1e3)}s`);
-    const t = this.backoffMs;
-    this.backoffMs = Math.min(this.backoffMs * 2, D), this.retryTimer = window.setTimeout(() => {
+    this.opts.onStateChange(
+      t === "auth" ? "auth-failed" : "disconnected",
+      `retry in ${Math.round(this.backoffMs / 1e3)}s`
+    );
+    const e = this.backoffMs;
+    this.backoffMs = Math.min(this.backoffMs * 2, B), this.retryTimer = window.setTimeout(() => {
       this.retryTimer = null, this.open();
-    }, t);
+    }, e);
   }
   clearRetry() {
     this.retryTimer !== null && (window.clearTimeout(this.retryTimer), this.retryTimer = null);
@@ -153,7 +172,7 @@ class F {
     this.backoffMs = 1e3, this.opts.onStateChange("connected");
   }
 }
-class H {
+class U {
   handlers = /* @__PURE__ */ new Map();
   register(t, e) {
     this.handlers.set(t, e);
@@ -162,73 +181,73 @@ class H {
     return [...this.handlers.keys()];
   }
   async handle(t, e) {
-    const r = this.handlers.get(t);
-    if (!r) {
-      const o = (this.handlers.size > 0 ? this.registeredTools() : [...P]).join(", ");
-      return { ok: !1, error: `unknown tool: ${t}. known: ${o}` };
+    const n = this.handlers.get(t);
+    if (!n) {
+      const s = (this.handlers.size > 0 ? this.registeredTools() : [...q]).join(", ");
+      return { ok: !1, error: `unknown tool: ${t}. known: ${s}` };
     }
     try {
-      return { ok: !0, data: await r(e ?? {}) };
-    } catch (o) {
-      return { ok: !1, error: o instanceof Error ? o.message : String(o) };
+      return { ok: !0, data: await n(e ?? {}) };
+    } catch (s) {
+      return { ok: !1, error: s instanceof Error ? s.message : String(s) };
     }
   }
 }
-class l extends Error {
+class u extends Error {
 }
-function g(n, t, e) {
-  const r = n[t];
-  if (r == null) {
-    if (e?.required) throw new l(`missing required arg: ${t}`);
+function m(o, t, e) {
+  const n = o[t];
+  if (n == null) {
+    if (e?.required) throw new u(`missing required arg: ${t}`);
     return e?.def ?? "";
   }
-  if (typeof r != "string") throw new l(`arg ${t} must be a string`);
-  return r;
+  if (typeof n != "string") throw new u(`arg ${t} must be a string`);
+  return n;
 }
-function y(n, t, e) {
-  const r = n[t];
-  if (r == null) return e?.def;
-  const o = typeof r == "number" ? r : Number(r);
-  if (!Number.isFinite(o)) throw new l(`arg ${t} must be a number`);
-  let s = o;
-  return e?.min !== void 0 && (s = Math.max(e.min, s)), e?.max !== void 0 && (s = Math.min(e.max, s)), s;
+function v(o, t, e) {
+  const n = o[t];
+  if (n == null) return e?.def;
+  const s = typeof n == "number" ? n : Number(n);
+  if (!Number.isFinite(s)) throw new u(`arg ${t} must be a number`);
+  let r = s;
+  return e?.min !== void 0 && (r = Math.max(e.min, r)), e?.max !== void 0 && (r = Math.min(e.max, r)), r;
 }
-function x(n, t, e = !1) {
-  const r = n[t];
-  return r == null ? e : r === !0 || r === "true";
+function k(o, t, e = !1) {
+  const n = o[t];
+  return n == null ? e : n === !0 || n === "true";
 }
-function z(n, t = 6) {
+function z(o, t = 6) {
   const e = /* @__PURE__ */ new WeakSet();
-  let r = 0;
-  const o = (s) => {
-    if (s !== void 0) {
-      if (s === null || typeof s == "number" || typeof s == "boolean") return s;
-      if (typeof s == "bigint") return s.toString() + "n";
-      if (typeof s == "string") return s.length > 2e5 ? s.slice(0, 2e5) + "…[truncated]" : s;
-      if (typeof s == "function") return `[fn ${s.name || "anonymous"}]`;
-      if (typeof s == "symbol") return s.toString();
-      if (s instanceof Error) return { name: s.name, message: s.message, stack: s.stack };
-      if (typeof s == "object") {
-        if (e.has(s)) return "[Circular]";
-        if (r >= t) return "[MaxDepth]";
-        e.add(s), r++;
+  let n = 0;
+  const s = (r) => {
+    if (r !== void 0) {
+      if (r === null || typeof r == "number" || typeof r == "boolean") return r;
+      if (typeof r == "bigint") return r.toString() + "n";
+      if (typeof r == "string") return r.length > 2e5 ? r.slice(0, 2e5) + "…[truncated]" : r;
+      if (typeof r == "function") return `[fn ${r.name || "anonymous"}]`;
+      if (typeof r == "symbol") return r.toString();
+      if (r instanceof Error) return { name: r.name, message: r.message, stack: r.stack };
+      if (typeof r == "object") {
+        if (e.has(r)) return "[Circular]";
+        if (n >= t) return "[MaxDepth]";
+        e.add(r), n++;
         try {
-          if (Array.isArray(s)) return s.slice(0, 1e3).map(o);
-          const a = {};
-          for (const [i, u] of Object.entries(s))
-            a[i] = o(u);
-          return a;
+          if (Array.isArray(r)) return r.slice(0, 1e3).map(s);
+          const i = {};
+          for (const [a, f] of Object.entries(r))
+            i[a] = s(f);
+          return i;
         } finally {
-          r--;
+          n--;
         }
       }
-      return String(s);
+      return String(r);
     }
   };
-  return JSON.stringify(o(n), null, 2);
+  return JSON.stringify(s(o), null, 2);
 }
-function O(n, t) {
-  return n.length <= t ? n : n.slice(0, t) + `…[+${n.length - t} chars]`;
+function S(o, t) {
+  return o.length <= t ? o : o.slice(0, t) + `…[+${o.length - t} chars]`;
 }
 const G = [
   "name",
@@ -247,35 +266,58 @@ const G = [
   "talkativeness",
   "favorites"
 ];
-function J(n, t, e, r) {
-  const o = {
-    index: t,
-    name: n.name,
-    is_user: n.is_user,
-    is_system: n.is_system,
-    mes: O(String(n.mes ?? ""), e),
-    swipe_id: n.swipe_id,
-    swipe_count: Array.isArray(n.swipes) ? n.swipes.length : void 0,
-    send_date: n.send_date
-  };
-  return r && n.variables !== void 0 && (o.variables = n.variables), n.extra && Object.keys(n.extra).length > 0 && (o.extra_keys = Object.keys(n.extra)), o;
+function J() {
+  const o = {};
+  for (const t of document.querySelectorAll("iframe")) {
+    const e = /^TH-message--(\d+)--\d+$/.exec(t.name || "");
+    if (e) {
+      const n = Number(e[1]);
+      (o[n] ??= []).push(t.name);
+    }
+  }
+  return o;
 }
-function W(n) {
+function N(o) {
+  const t = o.variables;
+  if (Array.isArray(t)) {
+    const e = typeof o.swipe_id == "number" ? o.swipe_id : 0;
+    return t[e] ?? t[t.length - 1] ?? null;
+  }
+  return t ?? null;
+}
+function Y(o, t, e, n, s) {
+  const r = {
+    index: t,
+    name: o.name,
+    is_user: o.is_user,
+    is_system: o.is_system,
+    mes: S(String(o.mes ?? ""), e),
+    swipe_id: o.swipe_id,
+    swipe_count: Array.isArray(o.swipes) ? o.swipes.length : void 0,
+    send_date: o.send_date
+  };
+  n && o.variables !== void 0 && (r.variables = o.variables), o.extra && Object.keys(o.extra).length > 0 && (r.extra_keys = Object.keys(o.extra));
+  const i = s?.[t];
+  return i && i.length > 0 && (r.iframes = i), r;
+}
+function R(o, t) {
+  const e = o[t];
+  if (e != null) {
+    if (Array.isArray(e)) return e.map((n) => String(n));
+    if (typeof e == "string")
+      return e.split(",").map((n) => n.trim()).filter((n) => n.length > 0);
+    throw new u(`arg ${t} must be a string array or comma-separated string`);
+  }
+}
+function X(o) {
   return {
     async tt_status() {
       const t = {
-        extension: { version: n.extVersion, stContext: M() },
-        capabilities: n.hostApi ? [
-          "st-context",
-          ...n.hostApi.dev?.frontendLogs ? ["dev.frontendLogs"] : [],
-          ...n.hostApi.dev?.backendLogs ? ["dev.backendLogs"] : [],
-          ...n.hostApi.dev?.llmApiLogs ? ["dev.llmApiLogs"] : [],
-          ...n.hostApi.worldInfo ? ["worldInfo"] : [],
-          ...n.hostApi.chat ? ["chat"] : []
-        ] : ["st-context"]
+        extension: { version: o.extVersion, stContext: $() },
+        capabilities: o.hostApi ? K(o.hostApi) : ["st-context"]
       };
-      if (M()) {
-        const e = h();
+      if ($()) {
+        const e = _();
         t.chat = {
           length: Array.isArray(e.chat) ? e.chat.length : null,
           chatId: e.chatId ?? null,
@@ -290,35 +332,37 @@ function W(n) {
       return t;
     },
     async tt_read_messages(t) {
-      const r = h().chat;
-      if (!Array.isArray(r)) throw new l("context.chat is not an array");
-      const o = y(t, "from", { min: 0 }) ?? 0, s = y(t, "to", { min: o, max: r.length }) ?? r.length, a = y(t, "maxMessageLength", { def: 2e3, min: 100, max: 2e5 }), i = x(t, "includeVariables", !1), u = r.slice(o, s);
+      const n = _().chat;
+      if (!Array.isArray(n)) throw new u("context.chat is not an array");
+      const s = v(t, "from", { min: 0 }) ?? 0, r = v(t, "to", { min: s, max: n.length }) ?? n.length, i = v(t, "maxMessageLength", { def: 2e3, min: 100, max: 2e5 }), a = k(t, "includeVariables", !1), f = J(), b = n.slice(s, r);
       return {
-        total: r.length,
-        from: o,
-        to: s,
-        messages: u.map((c, d) => J(c, o + d, a, i))
+        total: n.length,
+        from: s,
+        to: r,
+        messages: b.map(
+          (c, l) => Y(c, s + l, i, a, f)
+        )
       };
     },
     async tt_get_variables(t) {
-      const e = h(), r = g(t, "floor", { def: "" });
-      if (r !== "") {
-        const o = e.chat;
-        if (!Array.isArray(o)) throw new l("context.chat is not an array");
-        let s, a;
-        if (r === "latest")
-          s = o[o.length - 1], a = o.length - 1;
+      const e = _(), n = m(t, "floor", { def: "" });
+      if (n !== "") {
+        const s = e.chat;
+        if (!Array.isArray(s)) throw new u("context.chat is not an array");
+        let r, i;
+        if (n === "latest")
+          r = s[s.length - 1], i = s.length - 1;
         else {
-          const i = Number(r);
-          if (!Number.isInteger(i) || i < 0 || i >= o.length)
-            throw new l(`floor index out of range: ${r} (chat length ${o.length})`);
-          s = o[i], a = i;
+          const a = Number(n);
+          if (!Number.isInteger(a) || a < 0 || a >= s.length)
+            throw new u(`floor index out of range: ${n} (chat length ${s.length})`);
+          r = s[a], i = a;
         }
-        if (!s) throw new l("chat is empty");
+        if (!r) throw new u("chat is empty");
         return {
-          index: a,
-          swipe_id: s.swipe_id,
-          variables: s.variables ?? null
+          index: i,
+          swipe_id: r.swipe_id ?? 0,
+          variables: N(r)
         };
       }
       return {
@@ -326,173 +370,369 @@ function W(n) {
       };
     },
     async tt_get_character(t) {
-      const e = h(), r = e.characters;
-      if (!Array.isArray(r)) throw new l("context.characters is not available");
-      const o = g(t, "name", { def: "" }), s = x(t, "full", !1);
+      const e = _(), n = e.characters;
+      if (!Array.isArray(n)) throw new u("context.characters is not available");
+      const s = m(t, "name", { def: "" }), r = k(t, "full", !1), i = m(t, "section", { def: r ? "full" : "summary" });
       let a;
-      if (o) {
-        if (a = r.find(
-          (c) => String(c.name ?? "") === o || String(c.avatar ?? "") === o
+      if (s) {
+        if (a = n.find(
+          (c) => String(c.name ?? "") === s || String(c.avatar ?? "") === s
         ), !a) {
-          const c = r.map((d) => String(d.name ?? d.avatar ?? "?"));
-          throw new l(`character not found: ${o}. available: ${c.join(", ")}`);
+          const c = n.map((l) => String(l.name ?? l.avatar ?? "?"));
+          throw new u(`character not found: ${s}. available: ${c.join(", ")}`);
         }
       } else {
-        const c = e.characterId;
-        if (typeof c != "number" || !r[c])
-          throw new l("no active character (characterId is null or invalid)");
-        a = r[c];
+        const c = Number(e.characterId);
+        if (!Number.isInteger(c) || c < 0 || c >= n.length || !n[c])
+          throw new u("no active character (characterId is null or invalid)");
+        a = n[c];
       }
-      if (s) return a;
-      const i = {};
+      if (i === "full") return a;
+      if (i === "regexes") {
+        const c = a.data, l = a, d = c?.extensions?.regex_scripts ?? l.extension?.regex_scripts ?? null;
+        return Array.isArray(d) ? {
+          section: i,
+          count: d.length,
+          regexes: d.map((g) => {
+            const p = { ...g };
+            return typeof p.replaceString == "string" && (p.replaceString = S(p.replaceString, 4e3)), p;
+          })
+        } : { section: i, count: 0, regexes: [], note: "no embedded regex_scripts found" };
+      }
+      if (i === "scripts") {
+        const c = k(t, "includeContent", !1), l = a.data?.extensions?.tavern_helper, d = l?.scripts ?? l?.script_list;
+        let g = [];
+        return Array.isArray(d) ? g = d.map((h, p) => {
+          const y = h;
+          return [String(y.name ?? y.id ?? `#${p}`), y];
+        }) : d && typeof d == "object" && (g = Object.entries(d)), {
+          section: i,
+          count: g.length,
+          scripts: g.map(([h, p]) => {
+            const y = {
+              key: h,
+              name: p.name ?? h,
+              id: p.id ?? void 0,
+              type: p.type ?? void 0,
+              enabled: p.enabled ?? void 0
+            };
+            return typeof p.content == "string" && (y.contentLength = p.content.length, y.content = c ? p.content : S(p.content, 400)), y;
+          })
+        };
+      }
+      if (i === "character_book") {
+        const l = (a.data?.character_book ?? a.character_book)?.entries;
+        if (!Array.isArray(l) && !(l && typeof l == "object"))
+          return { section: i, count: 0, entries: [], note: "no character_book found" };
+        const d = Array.isArray(l) ? l.map((g, h) => [h, g ?? {}]) : Object.entries(l);
+        return {
+          section: i,
+          count: d.length,
+          entries: d.map(([g, h]) => ({
+            index: g,
+            comment: h.comment ?? h.name ?? null,
+            keys: h.key ?? h.keys ?? [],
+            secondaryKeys: h.secondary_keys ?? h.keysecondary ?? void 0,
+            constant: h.constant ?? void 0,
+            enabled: h.enabled ?? h.disable === !1,
+            position: h.position ?? void 0,
+            order: h.order ?? h.insertion_order ?? void 0,
+            contentPreview: typeof h.content == "string" ? S(h.content, 200) : void 0
+          }))
+        };
+      }
+      if (i !== "summary")
+        throw new u(
+          `unknown section: ${i} (use summary | full | regexes | scripts | character_book)`
+        );
+      const f = {};
       for (const c of G) {
-        const d = a[c];
-        typeof d == "string" ? i[c] = O(d, 400) : d !== void 0 && (i[c] = d);
+        const l = a[c];
+        typeof l == "string" ? f[c] = S(l, 400) : l !== void 0 && (f[c] = l);
       }
-      i.all_keys = Object.keys(a);
-      const u = a.data;
-      if (u && typeof u == "object") {
-        i.data_keys = Object.keys(u);
-        const c = u.extensions;
-        c && typeof c == "object" && (i.extension_keys = Object.keys(c));
+      f.all_keys = Object.keys(a);
+      const b = a.data;
+      if (b && typeof b == "object") {
+        f.data_keys = Object.keys(b);
+        const c = b.extensions;
+        c && typeof c == "object" && (f.extension_keys = Object.keys(c));
       }
-      return i;
+      return f;
+    },
+    async tt_mvu_stat(t) {
+      const n = _().chat;
+      if (!Array.isArray(n)) throw new u("context.chat is not an array");
+      const s = [];
+      let r = null, i = null;
+      for (let d = 0; d < n.length; d++) {
+        const g = n[d];
+        if (!g || g.variables === void 0) continue;
+        const h = N(g), p = h && typeof h == "object" ? h.stat_data : void 0, y = p && typeof p == "object" && !Array.isArray(p) ? Object.keys(p) : [];
+        s.push({
+          index: d,
+          swipe_id: g.swipe_id ?? 0,
+          statKeys: y
+        }), i === null && y.length > 0 && (i = d), r = { index: d, swipe_id: g.swipe_id ?? 0, stat_data: p ?? null };
+      }
+      const a = v(t, "scanFloors", { def: 30, min: 1, max: 500 });
+      let f = null;
+      const b = /<UpdateVariable\b[^>]*>([\s\S]*?)<\/UpdateVariable>/i;
+      for (let d = n.length - 1; d >= Math.max(0, n.length - a); d--) {
+        const g = n[d]?.mes;
+        if (typeof g != "string") continue;
+        const h = b.exec(g);
+        if (h) {
+          f = { index: d, text: S(h[0], 4e3) };
+          break;
+        }
+      }
+      const c = r?.stat_data, l = c && typeof c == "object" && Object.keys(c).length === 0;
+      return {
+        totalFloors: n.length,
+        latest: r,
+        latestStatEmpty: l === !0,
+        initvarFloor: i,
+        floorsWithVariables: s,
+        lastUpdateVariable: f,
+        hint: l === !0 ? "最新楼层 stat_data 为空对象 {} —— truthy 但无数据；读合并表请在消息 iframe 内用 getAllVariables()" : void 0
+      };
+    },
+    async tt_search_chat(t) {
+      const e = o.hostApi?.chat?.current;
+      if (!e?.handle) throw new u("chat handle API unavailable on this host");
+      const n = m(t, "query", { required: !0 }), s = v(t, "limit", { def: 20, min: 1, max: 200 }), r = m(t, "role", { def: "" }), i = await e.handle(), a = { query: n };
+      s !== void 0 && (a.limit = s), r && (a.role = r);
+      const f = await i.searchMessages(a);
+      return { query: n, hits: f };
+    },
+    async tt_find_message(t) {
+      const e = o.hostApi?.chat?.current;
+      if (!e?.handle) throw new u("chat handle API unavailable on this host");
+      const n = m(t, "role", { def: "" }), s = R(t, "hasTopLevelKeys"), r = R(t, "hasExtraKeys"), i = v(t, "scanLimit", { min: 1, max: 1e5 }), a = {};
+      return n && (a.role = n), s && (a.hasTopLevelKeys = s), r && (a.hasExtraKeys = r), i !== void 0 && (a.scanLimit = i), { found: await (await e.handle()).locate.findLastMessage(a) };
     },
     async tt_worldinfo_last() {
-      const t = n.hostApi?.worldInfo;
-      if (!t) throw new l("worldInfo API unavailable on this host");
+      const t = o.hostApi?.worldInfo;
+      if (!t) throw new u("worldInfo API unavailable on this host");
       return t.getLastActivation();
     }
   };
 }
-function k(n) {
-  return n.replace(/\|/g, "\\|");
+function T(o) {
+  return o.replace(/\|/g, "\\|");
 }
-function U() {
+function Q(o) {
   return {
-    async tt_exec_stscript(n) {
-      const t = g(n, "command", { required: !0 }), e = await m(t);
-      if (e.isError)
-        throw new l(`STScript error: ${e.errorMessage ?? "unknown"}`);
-      return { pipe: e.pipe ?? null };
+    async tt_exec_stscript(t) {
+      const e = m(t, "command", { required: !0 }), n = await A(e);
+      if (n.isError)
+        throw new u(`STScript error: ${n.errorMessage ?? "unknown"}`);
+      return { pipe: n.pipe ?? null };
     },
-    async tt_send_message(n) {
-      const t = g(n, "text", { required: !0 }), e = x(n, "trigger", !0);
-      if (x(n, "silent", !1) || !e)
-        return await m(`/send ${k(t)}`), { sent: !0, triggered: !1 };
-      const o = await m(`/send ${k(t)} | /trigger`);
-      if (o.isError)
-        throw new l(`send failed: ${o.errorMessage ?? "unknown"}`);
+    async tt_send_message(t) {
+      const e = m(t, "text", { required: !0 }), n = k(t, "trigger", !0);
+      if (k(t, "silent", !1) || !n)
+        return await A(`/send ${T(e)}`), { sent: !0, triggered: !1 };
+      const r = await A(`/send ${T(e)} | /trigger`);
+      if (r.isError)
+        throw new u(`send failed: ${r.errorMessage ?? "unknown"}`);
       return { sent: !0, triggered: !0 };
     },
-    async tt_set_variables(n) {
-      const t = g(n, "scope", { def: "chat" }), e = n.values;
-      if (!e || typeof e != "object" || Array.isArray(e))
-        throw new l("arg values must be an object of key->value");
-      const r = Object.entries(e);
-      if (r.length === 0) throw new l("values is empty");
-      if (t === "chat") {
-        const o = h(), s = o.chatMetadata ??= {}, a = s.variables ??= {};
-        return Object.assign(a, e), typeof o.saveChat == "function" && await o.saveChat(), { scope: t, written: r.map(([i]) => i), persisted: !0 };
+    async tt_set_variables(t) {
+      const e = m(t, "scope", { def: "chat" }), n = t.values;
+      if (!n || typeof n != "object" || Array.isArray(n))
+        throw new u("arg values must be an object of key->value");
+      const s = Object.entries(n);
+      if (s.length === 0) throw new u("values is empty");
+      if (e === "chat") {
+        const r = _(), i = r.chatMetadata ??= {}, a = i.variables ??= {};
+        return Object.assign(a, n), typeof r.saveChat == "function" && await r.saveChat(), { scope: e, written: s.map(([f]) => f), persisted: !0 };
       }
-      if (t === "global") {
-        for (const [o, s] of r) {
-          const a = typeof s == "string" ? s : JSON.stringify(s), i = await m(
-            `/setvar scope=global key=${JSON.stringify(o)} ${k(a)}`
+      if (e === "global") {
+        for (const [r, i] of s) {
+          const a = typeof i == "string" ? i : JSON.stringify(i), f = await A(
+            `/setvar scope=global key=${JSON.stringify(r)} ${T(a)}`
           );
-          if (i.isError)
-            throw new l(`setvar failed for ${o}: ${i.errorMessage ?? "unknown"}`);
+          if (f.isError)
+            throw new u(`setvar failed for ${r}: ${f.errorMessage ?? "unknown"}`);
         }
-        return { scope: t, written: r.map(([o]) => o) };
+        return { scope: e, written: s.map(([r]) => r) };
       }
-      throw new l(`unknown scope: ${t} (use 'chat' or 'global')`);
+      throw new u(`unknown scope: ${e} (use 'chat' or 'global')`);
     },
-    async tt_switch_character(n) {
-      const t = g(n, "name", { required: !0 }), e = await m(`/go ${k(t)}`);
-      if (e.isError)
-        throw new l(
-          `switch failed: ${e.errorMessage ?? "unknown"} (check exact character name)`
+    async tt_switch_character(t) {
+      const e = m(t, "name", { required: !0 }), n = await A(`/go ${T(e)}`);
+      if (n.isError)
+        throw new u(
+          `switch failed: ${n.errorMessage ?? "unknown"} (check exact character name)`
         );
       return { switched: !0 };
+    },
+    async tt_worldinfo_open(t) {
+      const e = o.hostApi?.worldInfo;
+      if (!e?.openEntry)
+        throw new u("worldInfo.openEntry unavailable on this host");
+      const n = m(t, "world", { required: !0 }), s = t.uid;
+      let r;
+      if (typeof s == "number") r = s;
+      else if (typeof s == "string" && s !== "") r = s;
+      else throw new u("missing required arg: uid (number or string)");
+      return { opened: (await e.openEntry({ world: n, uid: r })).opened === !0, world: n, uid: r };
     }
   };
 }
-function Y(n) {
+function Z(o) {
+  return o.startsWith("TH-message--") ? "message" : o.startsWith("TH-script--") ? "script" : "other";
+}
+function ee(o) {
+  const t = o.name || "", e = {
+    name: t,
+    kind: Z(t),
+    sameOrigin: !1,
+    scripts: null,
+    bodyHtmlLength: null,
+    domNodes: null,
+    hasVue: null,
+    visible: o.offsetParent !== null || o.offsetWidth > 0 || o.offsetHeight > 0,
+    width: o.offsetWidth,
+    height: o.offsetHeight
+  };
+  try {
+    const n = o.contentDocument;
+    if (!n) return e;
+    e.sameOrigin = !0, e.scripts = n.querySelectorAll("script").length, e.bodyHtmlLength = n.body ? n.body.innerHTML.length : 0, e.domNodes = n.querySelectorAll("*").length;
+    const s = o.contentWindow;
+    e.hasVue = s ? typeof s.Vue < "u" : !1;
+  } catch {
+  }
+  return e;
+}
+function te(o) {
+  const t = [...document.querySelectorAll("iframe")], e = t.find((s) => s.name === o);
+  if (e) return e;
+  const n = t.map((s) => s.name || "(anonymous)").slice(0, 30).join(", ");
+  throw new u(`iframe not found: ${o}. available: ${n || "(none)"}`);
+}
+function ne(o, t) {
+  let e;
+  if (t) {
+    const i = te(t).contentWindow;
+    if (!i) throw new u(`iframe has no contentWindow: ${t}`);
+    e = i;
+  } else
+    e = window;
+  let n;
+  try {
+    n = e.Function.bind(e);
+  } catch (r) {
+    throw new u(
+      `cannot execute in frame ${t}: likely cross-origin (${String(r).slice(0, 80)})`
+    );
+  }
+  return n(`"use strict";return (async () => {
+` + o + `
+})()`)();
+}
+function oe(o) {
   return {
     async tt_logs(t) {
-      const e = g(t, "kind", { def: "frontend" }), r = y(t, "limit", { def: 50, min: 1, max: 500 }), o = n.hostApi?.dev;
-      if (!o) throw new l("dev API unavailable on this host");
+      const e = m(t, "kind", { def: "frontend" }), n = v(t, "limit", { def: 50, min: 1, max: 500 }), s = o.hostApi?.dev;
+      if (!s) throw new u("dev API unavailable on this host");
       if (e === "frontend") {
-        if (!o.frontendLogs) throw new l("dev.frontendLogs unavailable");
-        const s = await o.frontendLogs.list({ limit: r });
-        return { kind: e, entries: s };
+        if (!s.frontendLogs) throw new u("dev.frontendLogs unavailable");
+        const r = await s.frontendLogs.list({ limit: n });
+        return { kind: e, entries: r };
       }
       if (e === "backend") {
-        if (!o.backendLogs) throw new l("dev.backendLogs unavailable");
-        const s = await o.backendLogs.tail({ limit: r });
-        return { kind: e, entries: s };
+        if (!s.backendLogs) throw new u("dev.backendLogs unavailable");
+        const r = await s.backendLogs.tail({ limit: n });
+        return { kind: e, entries: r };
       }
-      throw new l(`unknown kind: ${e} (use 'frontend' or 'backend')`);
+      throw new u(`unknown kind: ${e} (use 'frontend' or 'backend')`);
     },
     async tt_llm_logs(t) {
-      const e = n.hostApi?.dev;
-      if (!e?.llmApiLogs) throw new l("dev.llmApiLogs unavailable on this host");
-      const r = y(t, "id");
-      if (r !== void 0)
-        return x(t, "raw", !1) ? e.llmApiLogs.getRaw(r) : e.llmApiLogs.getPreview(r);
-      const o = y(t, "limit", { def: 20, min: 1, max: 200 });
-      return e.llmApiLogs.index({ limit: o });
+      const e = o.hostApi?.dev;
+      if (!e?.llmApiLogs) throw new u("dev.llmApiLogs unavailable on this host");
+      const n = v(t, "id");
+      if (n !== void 0)
+        return k(t, "raw", !1) ? e.llmApiLogs.getRaw(n) : e.llmApiLogs.getPreview(n);
+      const s = v(t, "limit", { def: 20, min: 1, max: 200 });
+      return e.llmApiLogs.index({ limit: s });
+    },
+    async tt_llm_keep(t) {
+      const e = o.hostApi?.dev?.llmApiLogs;
+      if (!e?.getKeep) throw new u("dev.llmApiLogs.getKeep unavailable on this host");
+      const n = await e.getKeep(), s = v(t, "keep", { min: 1, max: 1e4 });
+      if (s !== void 0) {
+        if (!e.setKeep) throw new u("dev.llmApiLogs.setKeep unavailable on this host");
+        await e.setKeep(s);
+      }
+      const r = await e.getKeep();
+      return { before: n, after: r, keep: r };
+    },
+    async tt_console_capture(t) {
+      const e = o.hostApi?.dev?.frontendLogs;
+      if (!e?.getConsoleCaptureEnabled || !e.setConsoleCaptureEnabled)
+        throw new u("dev.frontendLogs console capture API unavailable on this host");
+      const n = await e.getConsoleCaptureEnabled();
+      t.enabled !== void 0 && await e.setConsoleCaptureEnabled(k(t, "enabled", n));
+      const s = await e.getConsoleCaptureEnabled();
+      return { before: n, enabled: s };
+    },
+    async tt_iframes() {
+      const e = [...document.querySelectorAll("iframe")].map((s) => ee(s)), n = {};
+      for (const s of e) {
+        const r = /^TH-message--(\d+)--\d+$/.exec(s.name);
+        r && (n[r[1]] ??= []).push(s.name);
+      }
+      return { count: e.length, iframes: e, messageIframesByFloor: n };
     },
     async tt_eval(t) {
-      const e = g(t, "code", { required: !0 }), o = await new Function(
-        `"use strict";return (async () => {
-` + e + `
-})()`
-      )();
-      return o === void 0 ? null : typeof o == "string" ? o : JSON.parse(z(o));
+      const e = m(t, "code", { required: !0 }), n = m(t, "frame", { def: "" }), s = await ne(e, n);
+      return s === void 0 ? null : typeof s == "string" ? s : JSON.parse(z(s));
     }
   };
 }
-const N = "tt-agent-bridge.settings", E = {
+const j = "tt-agent-bridge.settings", I = {
   enabled: !0,
   port: 18789,
   token: ""
 };
-function K() {
-  let n = t();
+function re() {
+  let o = t();
   function t() {
     try {
-      const r = localStorage.getItem(N);
-      if (!r) return { ...E };
-      const o = JSON.parse(r);
+      const n = localStorage.getItem(j);
+      if (!n) return { ...I };
+      const s = JSON.parse(n);
       return {
-        enabled: typeof o.enabled == "boolean" ? o.enabled : E.enabled,
-        port: typeof o.port == "number" && o.port > 0 && o.port < 65536 ? o.port : E.port,
-        token: typeof o.token == "string" ? o.token : ""
+        enabled: typeof s.enabled == "boolean" ? s.enabled : I.enabled,
+        port: typeof s.port == "number" && s.port > 0 && s.port < 65536 ? s.port : I.port,
+        token: typeof s.token == "string" ? s.token : ""
       };
     } catch {
-      return { ...E };
+      return { ...I };
     }
   }
   const e = /* @__PURE__ */ new Set();
   return {
     get state() {
-      return n;
+      return o;
     },
-    update(r) {
-      n = { ...n, ...r };
+    update(n) {
+      o = { ...o, ...n };
       try {
-        localStorage.setItem(N, JSON.stringify(n));
+        localStorage.setItem(j, JSON.stringify(o));
       } catch {
       }
-      for (const o of e) o(n);
+      for (const s of e) s(o);
     },
-    subscribe(r) {
-      return e.add(r), () => e.delete(r);
+    subscribe(n) {
+      return e.add(n), () => e.delete(n);
     }
   };
 }
-const X = `
+const se = `
   :host {
     all: initial;
     font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -555,12 +795,12 @@ const X = `
     color: #9a9; white-space: pre-wrap; word-break: break-all;
   }
 `;
-function Q(n) {
+function ie(o) {
   const t = document.createElement("div");
   t.id = "tt-agent-bridge-ui";
   const e = t.attachShadow({ mode: "open" });
   e.innerHTML = `
-    <style>${X}</style>
+    <style>${se}</style>
     <div class="wrap">
       <div class="badge"><span class="dot disabled"></span><span class="label">Bridge</span></div>
       <div class="panel hidden">
@@ -577,108 +817,128 @@ function Q(n) {
       </div>
     </div>
   `;
-  const r = e.querySelector(".badge"), o = e.querySelector(".dot"), s = e.querySelector(".label"), a = e.querySelector(".panel"), i = e.querySelector(".status"), u = e.querySelector(".enabled"), c = e.querySelector(".port"), d = e.querySelector(".token"), b = e.querySelector(".reconnect"), C = e.querySelector(".close"), A = e.querySelector(".logs"), S = [];
-  r.addEventListener("click", () => a.classList.toggle("hidden")), C.addEventListener("click", () => a.classList.add("hidden"));
-  const { settings: w } = n;
-  u.checked = w.state.enabled, c.value = String(w.state.port), d.value = w.state.token, u.addEventListener("change", () => w.update({ enabled: u.checked })), c.addEventListener("change", () => {
-    const f = Number(c.value);
-    Number.isInteger(f) && f > 0 && f < 65536 && w.update({ port: f });
-  }), d.addEventListener("change", () => w.update({ token: d.value.trim() })), b.addEventListener("click", () => n.onManualRestart());
-  function $(f, v) {
-    o.className = `dot ${f}`;
-    const R = {
+  const n = e.querySelector(".badge"), s = e.querySelector(".dot"), r = e.querySelector(".label"), i = e.querySelector(".panel"), a = e.querySelector(".status"), f = e.querySelector(".enabled"), b = e.querySelector(".port"), c = e.querySelector(".token"), l = e.querySelector(".reconnect"), d = e.querySelector(".close"), g = e.querySelector(".logs"), h = [];
+  n.addEventListener("click", () => i.classList.toggle("hidden")), d.addEventListener("click", () => i.classList.add("hidden"));
+  const { settings: p } = o;
+  f.checked = p.state.enabled, b.value = String(p.state.port), c.value = p.state.token, f.addEventListener("change", () => p.update({ enabled: f.checked })), b.addEventListener("change", () => {
+    const w = Number(b.value);
+    Number.isInteger(w) && w > 0 && w < 65536 && p.update({ port: w });
+  }), c.addEventListener("change", () => p.update({ token: c.value.trim() })), l.addEventListener("click", () => o.onManualRestart());
+  function y(w, E) {
+    s.className = `dot ${w}`;
+    const V = {
       connected: "Bridge ✓",
       connecting: "Bridge …",
       "auth-failed": "Bridge ✗",
       disconnected: "Bridge ×",
       disabled: "Bridge off"
     };
-    s.textContent = R[f], i.textContent = v ? `${f}: ${v}` : f, i.className = f === "auth-failed" ? "status err" : "status";
+    r.textContent = V[w], a.textContent = E ? `${w}: ${E}` : w, a.className = w === "auth-failed" ? "status err" : "status";
   }
   return document.body.appendChild(t), {
-    setState: $,
-    log(f) {
-      const v = `${(/* @__PURE__ */ new Date()).toLocaleTimeString()} ${f}`;
-      S.push(v), S.length > 30 && S.shift(), A.textContent = S.join(`
-`), A.scrollTop = A.scrollHeight;
+    setState: y,
+    log(w) {
+      const E = `${(/* @__PURE__ */ new Date()).toLocaleTimeString()} ${w}`;
+      h.push(E), h.length > 30 && h.shift(), g.textContent = h.join(`
+`), g.scrollTop = g.scrollHeight;
     },
     dispose() {
       t.remove();
     }
   };
 }
-const I = [];
-function Z() {
-  return document.readyState !== "loading" ? Promise.resolve() : new Promise((n) => {
-    document.addEventListener("DOMContentLoaded", () => n(), { once: !0 });
+const O = [];
+function ae() {
+  return document.readyState !== "loading" ? Promise.resolve() : new Promise((o) => {
+    document.addEventListener("DOMContentLoaded", () => o(), { once: !0 });
   });
 }
-function ee(n, t = 200) {
-  const e = typeof n == "string" ? n : String(n ?? "");
+function ce(o, t = 200) {
+  const e = typeof o == "string" ? o : String(o ?? "");
   return e.length > t ? e.slice(0, t) + "…" : e;
 }
-function te(n, t) {
+function le(o, t) {
   const e = [];
-  if (M()) {
-    const r = h().eventSource;
-    if (r) {
-      const o = (s) => {
-        const a = h().chat, i = Array.isArray(a) ? a.length - 1 : null, u = s && typeof s == "object" && "name" in s ? String(s.name ?? "") : "", c = s && typeof s == "object" && "mes" in s ? ee(s.mes) : "";
-        t("message_added", { index: i, name: u, snippet: c });
+  if ($()) {
+    const n = _().eventSource;
+    if (n) {
+      const s = (r) => {
+        const i = _().chat, a = Array.isArray(i) ? i.length - 1 : null, f = r && typeof r == "object" && "name" in r ? String(r.name ?? "") : "", b = r && typeof r == "object" && "mes" in r ? ce(r.mes) : "", c = (d) => t("message_added", { index: d, name: f, snippet: b }), l = o?.chat?.current?.windowInfo;
+        l ? l().then((d) => {
+          d && d.mode === "windowed" && a !== null ? c(d.windowStartIndex + a) : c(a);
+        }).catch(() => c(a)) : c(a);
       };
-      r.on(_.MESSAGE_RECEIVED, o), r.on(_.MESSAGE_SENT, o), e.push(() => {
-        r.off?.(_.MESSAGE_RECEIVED, o), r.off?.(_.MESSAGE_SENT, o);
+      n.on(L.MESSAGE_RECEIVED, s), n.on(L.MESSAGE_SENT, s), e.push(() => {
+        n.off?.(L.MESSAGE_RECEIVED, s), n.off?.(L.MESSAGE_SENT, s);
       });
     }
   }
-  n?.worldInfo?.subscribeActivations && n.worldInfo.subscribeActivations((r) => t("worldinfo_activation", r)).then((r) => e.push(r)).catch(() => {
-  }), n?.dev?.frontendLogs?.subscribe && n.dev.frontendLogs.subscribe((r) => {
-    r.level === "error" && t("log_error", r);
-  }).then((r) => e.push(r)).catch(() => {
-  }), I.push(() => {
-    for (const r of e)
+  o?.worldInfo?.subscribeActivations && o.worldInfo.subscribeActivations((n) => t("worldinfo_activation", n)).then((n) => e.push(n)).catch(() => {
+  }), o?.dev?.frontendLogs?.subscribe && o.dev.frontendLogs.subscribe((n) => {
+    n.level === "error" && t("log_error", { kind: "frontend", ...n });
+  }).then((n) => e.push(n)).catch(() => {
+  }), o?.dev?.backendLogs?.subscribe && o.dev.backendLogs.subscribe((n) => {
+    n.level === "ERROR" && t("log_error", { kind: "backend", ...n });
+  }).then((n) => e.push(n)).catch(() => {
+  }), o?.dev?.llmApiLogs?.subscribeIndex && o.dev.llmApiLogs.subscribeIndex((n) => {
+    t("llm_request", {
+      id: n.id,
+      ok: n.ok,
+      level: n.level,
+      model: n.model ?? null,
+      endpoint: n.endpoint,
+      durationMs: n.durationMs
+    });
+  }).then((n) => e.push(n)).catch(() => {
+  }), O.push(() => {
+    for (const n of e)
       try {
-        r();
+        n();
       } catch {
       }
   });
 }
-async function ne() {
-  await Z(), await q();
-  const n = j(), t = await V(), e = new H(), r = W({ hostApi: n, extVersion: T }), o = U(), s = Y({ hostApi: n });
-  for (const [d, b] of Object.entries({ ...r, ...o, ...s }))
-    e.register(d, b);
-  const a = K();
-  let i = null;
-  const u = Q({
+async function de() {
+  await ae(), await H();
+  const o = F(), t = await P(), e = new U(), n = X({ hostApi: o, extVersion: M }), s = Q({ hostApi: o }), r = oe({ hostApi: o }), i = { ...n, ...s, ...r };
+  for (const l of q) {
+    const d = i[l];
+    typeof d != "function" && console.error(`[TT Agent Bridge] handler missing for protocol tool: ${l}`), e.register(l, d);
+  }
+  const a = re();
+  let f = null;
+  const b = ie({
     settings: a,
-    onManualRestart: () => i?.restart()
+    onManualRestart: () => f?.restart()
   });
-  I.push(() => u.dispose()), i = new F({
+  O.push(() => b.dispose()), f = new D({
     getPort: () => a.state.port,
     getToken: () => a.state.token,
     buildHello: () => ({
-      ext: { version: T },
-      host: { capabilities: e.registeredTools() }
+      ext: { version: M },
+      host: { tools: e.registeredTools() }
     }),
     dispatcher: e,
-    onStateChange: (d, b) => {
-      u.setState(d, b), d === "connected" && u.log("bridge connected");
+    onStateChange: (l, d) => {
+      b.setState(l, d), l === "connected" && b.log("bridge connected"), f?.sendEvent("extension_log", {
+        level: "info",
+        message: `connection ${l}${d ? `: ${d}` : ""}`
+      });
     },
-    onLog: (d) => u.log(d)
+    onLog: (l) => b.log(l)
   });
   const c = () => {
-    a.state.enabled ? i?.restart() : (i?.stop(), u.setState("disabled"));
+    a.state.enabled ? f?.restart() : (f?.stop(), b.setState("disabled"));
   };
-  a.subscribe(c), c(), te(n, (d, b) => i?.sendEvent(d, b)), u.log(`extension v${T} loaded (st-context: ${t ? "ok" : "unavailable"})`), window.addEventListener("pagehide", re, { once: !0 });
+  a.subscribe(c), c(), le(o, (l, d) => f?.sendEvent(l, d)), b.log(`extension v${M} loaded (st-context: ${t ? "ok" : "unavailable"})`), window.addEventListener("pagehide", ue, { once: !0 });
 }
-function re() {
-  for (const n of I.splice(0))
+function ue() {
+  for (const o of O.splice(0))
     try {
-      n();
+      o();
     } catch {
     }
 }
-ne().catch((n) => {
-  console.error("[TT Agent Bridge] bootstrap failed:", n);
+de().catch((o) => {
+  console.error("[TT Agent Bridge] bootstrap failed:", o);
 });
