@@ -1,0 +1,6 @@
+node_modules/
+dist/style.css.map
+dist/index.js.map
+*.tsbuildinfo
+bridge/.bridge-token
+bridge/node_modules/
